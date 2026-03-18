@@ -1,6 +1,6 @@
 # Customer Prediction System
 
-Django REST API for customer transaction data with likelihood predictions.
+Minimal Django REST API and ML pipeline for a synthetic customer transaction prediction system.
 
 ## Setup
 
@@ -18,36 +18,25 @@ cd customer_prediction_system
 # Run migrations
 python manage.py migrate
 
-# Load data from CSV (uses predictor/data/dataset.csv by default)
-python manage.py load_data
-
-# Create superuser for admin (optional)
-python manage.py createsuperuser
+# Load synthetic transaction data (generated in `dataset.ipynb`)
+python manage.py load_data --file customer_prediction_system/predictor/data/dataset1.csv
 
 # Start server
 python manage.py runserver
 ```
 
-## API Endpoints
+## API (read‑only)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | API info and endpoint list |
 | `GET /api/customers/` | List customers (search, ordering) |
 | `GET /api/customers/{customer_id}/` | Get customer details |
 | `GET /api/customers/{customer_id}/transactions/` | Get customer's transactions |
 | `GET /api/transactions/` | List transactions (search, ordering) |
 | `GET /api/transactions/{transaction_id}/` | Get transaction details |
-| `GET /admin/` | Django admin |
 
-## Project Structure
+## ML Overview (Phase 3)
 
-```
-Customer Prediction System/
-├── customer_prediction_system/   # Django project
-│   ├── predictor/                # App (models, views, serializers)
-│   └── manage.py
-├── predictor/data/
-│   └── dataset.csv              # Transaction data
-└── requirements.txt
-```
+- Synthetic behavioral dataset generated in `dataset.ipynb` with `likelihood_prediction` (days until next transaction).
+- Regression models (Linear Regression, RandomForestRegressor, XGBRegressor) and classification models (RandomForestClassifier, XGBClassifier) trained in `notebooks/model_training.ipynb`.
+- Predictions stored in the `likelihood_prediction` field on `Transaction` and exposed via the API for downstream use.
