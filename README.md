@@ -53,7 +53,7 @@ python manage.py runserver
 
   Set **`OPENAI_API_KEY`** in the environment for GPT message generation; if the API call fails, a short fallback message is used.
 
-### Python dependencies for the pipeline (not in `requirements.txt` today)
+### Python dependencies for the pipeline 
 
 The Django `requirements.txt` covers the API only. For notebooks and `pipeline.py`, install additionally, for example:
 
