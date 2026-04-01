@@ -21,12 +21,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         file_path = options['file']
         
-        # Get absolute path relative to project root
+        # Resolve relative paths against Django project root (directory with manage.py)
         if not os.path.isabs(file_path):
-            # Go up from customer_prediction_system/predictor/management/commands/
-            # to customer_prediction_system/ then to parent directory
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            file_path = os.path.join(os.path.dirname(base_dir), file_path)
+            # .../predictor/management/commands/ -> four parents = project root
+            project_root = os.path.dirname(
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                )
+            )
+            file_path = os.path.join(project_root, file_path)
         
         if not os.path.exists(file_path):
             self.stdout.write(self.style.ERROR(f'File not found: {file_path}'))

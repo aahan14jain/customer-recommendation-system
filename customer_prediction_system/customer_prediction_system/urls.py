@@ -17,6 +17,12 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
+from rest_framework_simplejwt.views import (
+    TokenBlacklistView,
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
 
 def home(request):
     return JsonResponse({
@@ -24,13 +30,21 @@ def home(request):
         'endpoints': {
             'admin': '/admin/',
             'api': '/api/',
+            'auth_login': '/api/auth/login/',
+            'auth_refresh': '/api/auth/refresh/',
+            'auth_logout': '/api/auth/logout/',
             'customers': '/api/customers/',
             'transactions': '/api/transactions/',
+            'recommendations_me': '/api/recommendations/me/',
         }
     })
+
 
 urlpatterns = [
     path('', home, name='home'),
     path('admin/', admin.site.urls),
+    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/logout/', TokenBlacklistView.as_view(), name='token_blacklist'),
     path('api/', include('predictor.urls')),
 ]

@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Customer, Transaction
+from .models import Customer, Transaction, UserProfile
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'customer')
+    search_fields = ('user__username', 'customer__customer_id', 'customer__first_name', 'customer__last_name')
+    autocomplete_fields = ('user', 'customer')
 
 
 @admin.register(Customer)

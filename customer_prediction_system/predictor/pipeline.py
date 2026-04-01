@@ -191,7 +191,11 @@ def generate_message(prediction: dict, offer: dict) -> str:
         f"Best time to {offer['action']} is around {best_time}.{extra}"
     )
 
-    api_key = load_api_key()
+    try:
+        api_key = load_api_key()
+    except RuntimeError:
+        return fallback
+
     if client is None:
         client = OpenAI(api_key=api_key)
 
@@ -243,21 +247,17 @@ def run_pipeline(customer_id: str, vendor: str):
     return message
 
 
-def run_for_all_vendors(customer_id: str, top_n: int = 5):
+def _compute_ranked_recommendations(customer_id: str):
     """
-    Run the full pipeline for all vendors this customer has history with.
-    Uses cycle-aware windows from detect_purchase_pattern; ML bucket/confidence from predict_window.
+    Ranked vendor recommendations for a customer using the training dataset (ML features).
+    Returns a list of dicts with pattern fields, bucket, confidence, offer_price, score.
     """
     customer_df = df[df["customer_id"] == customer_id]
     if customer_df.empty:
-        print(f"No history found for customer {customer_id[:8]}...")
         return []
 
     vendors = customer_df["vendor"].unique()
     today = pd.Timestamp(datetime.today().date())
-    print(f"\nCustomer {customer_id[:8]}... | {len(vendors)} vendors in history")
-    print("=" * 60)
-
     results = []
     for vendor in vendors:
         pattern = detect_purchase_pattern(customer_id, vendor)
@@ -291,7 +291,75 @@ def run_for_all_vendors(customer_id: str, top_n: int = 5):
             }
         )
 
-    results = sorted(results, key=lambda x: x["score"], reverse=True)
+    return sorted(results, key=lambda x: x["score"], reverse=True)
+
+
+def get_recommendations_for_customer(customer_id: str, top_n: int = 5):
+    """
+    Run the recommendation pipeline for one customer and return JSON-serializable data.
+    Uses the same dataset as the ML model (dataset1.csv). Does not query Django ORM.
+    """
+    results = _compute_ranked_recommendations(customer_id)
+    out = []
+    for r in results[:top_n]:
+        ctx = VENDOR_PRICE_CONTEXT.get(r["vendor"], {})
+        offer = {
+            "vendor": r["vendor"],
+            "deal_price": r["offer_price"],
+            "window_start": r["window_start"],
+            "window_end": r["window_end"],
+            "category": ctx.get("category", "purchase"),
+            "unit": ctx.get("unit", "visit"),
+            "action": ctx.get("action", "shop"),
+            "avg_spend": r["avg_spend"],
+            "predicted_date": r["predicted_date"],
+        }
+        message = generate_message(r, offer)
+        out.append(
+            {
+                "vendor": r["vendor"],
+                "score": r["score"],
+                "bucket": r["bucket"],
+                "confidence": r["confidence"],
+                "pattern": {
+                    "avg_gap_days": r["avg_gap_days"],
+                    "predicted_date": r["predicted_date"],
+                    "window_start": r["window_start"],
+                    "window_end": r["window_end"],
+                    "num_purchases": r["num_purchases"],
+                    "avg_spend": r["avg_spend"],
+                },
+                "offer": {
+                    "deal_price": float(offer["deal_price"]),
+                    "avg_spend": float(offer["avg_spend"]),
+                    "category": offer["category"],
+                    "unit": offer["unit"],
+                    "action": offer["action"],
+                    "window_start": offer["window_start"],
+                    "window_end": offer["window_end"],
+                },
+                "message": message,
+            }
+        )
+
+    return {"recommendations": out}
+
+
+def run_for_all_vendors(customer_id: str, top_n: int = 5):
+    """
+    Run the full pipeline for all vendors this customer has history with.
+    Uses cycle-aware windows from detect_purchase_pattern; ML bucket/confidence from predict_window.
+    """
+    customer_df = df[df["customer_id"] == customer_id]
+    if customer_df.empty:
+        print(f"No history found for customer {customer_id[:8]}...")
+        return []
+
+    vendors = customer_df["vendor"].unique()
+    print(f"\nCustomer {customer_id[:8]}... | {len(vendors)} vendors in history")
+    print("=" * 60)
+
+    results = _compute_ranked_recommendations(customer_id)
 
     print(f"\n{'Vendor':<22} {'Cycle':<10} {'Predicted date':<18} {'Window':<28} {'Offer'}")
     print("-" * 90)

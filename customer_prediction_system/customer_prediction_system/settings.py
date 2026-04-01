@@ -10,7 +10,30 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import getpass
+import os
+from datetime import timedelta
 from pathlib import Path
+
+
+def _postgres_user() -> str:
+    """Default DB user: explicit POSTGRES_USER, else OS login (Homebrew Postgres on macOS), else postgres."""
+    explicit = os.environ.get("POSTGRES_USER")
+    if explicit:
+        return explicit
+    return (
+        os.environ.get("USER")
+        or os.environ.get("USERNAME")
+        or os.environ.get("LOGNAME")
+        or getpass.getuser()
+    )
+
+
+def _postgres_password() -> str:
+    """Empty password is common for local trust auth; set POSTGRES_PASSWORD for Docker/Linux."""
+    if "POSTGRES_PASSWORD" in os.environ:
+        return os.environ["POSTGRES_PASSWORD"]
+    return ""
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,6 +55,8 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'predictor',
     'django.contrib.admin',
@@ -73,13 +98,22 @@ TEMPLATES = [
 WSGI_APPLICATION = 'customer_prediction_system.wsgi.application'
 
 
-# Database
+# Database — PostgreSQL (auth User, sessions, JWT blacklist, predictor.*)
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# Set POSTGRES_* via environment (see .env.example next to manage.py).
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'customer_prediction'),
+        'USER': _postgres_user(),
+        'PASSWORD': _postgres_password(),
+        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '60')),
+        'OPTIONS': {
+            'connect_timeout': int(os.environ.get('POSTGRES_CONNECT_TIMEOUT', '10')),
+        },
     }
 }
 
@@ -130,6 +164,21 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # REST Framework
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',
+    ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+}
+
+# JWT (djangorestframework-simplejwt)
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }

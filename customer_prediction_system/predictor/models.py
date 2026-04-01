@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -13,6 +14,37 @@ class Customer(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.customer_id})"
+
+
+class UserProfile(models.Model):
+    """Links a Django user to a Customer for scoped API access."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='profile',
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name='user_profiles',
+    )
+
+    @classmethod
+    def get_or_create_for_user(cls, user, customer):
+        """
+        Safe get_or_create: the FK must appear in ``defaults`` when the lookup
+        is only ``user``, or inserts will leave ``customer_id`` null and fail.
+
+        Returns ``(profile, created)`` like ``QuerySet.get_or_create``.
+        """
+        return cls.objects.get_or_create(
+            user=user,
+            defaults={'customer': customer},
+        )
+
+    def __str__(self):
+        return f"{self.user.get_username()} → {self.customer.customer_id}"
 
 
 class Transaction(models.Model):
