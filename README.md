@@ -1,6 +1,6 @@
 # Customer Prediction System
 
-Django REST API plus a Next.js dashboard, with an offline ML pipeline for synthetic customer transactions: predict **when** a customer is likely to purchase again at a given vendor, surface **deal-style windows**, and optionally generate short **GPT deal alerts**.
+Django REST API plus a Next.js dashboard, with an offline ML pipeline for synthetic customer transactions: predict **when** a customer is likely to purchase again at a given vendor, surface **deal-style windows**, attach **mock-matched offers** (with alternates), and optionally generate short **GPT deal alerts**.
 
 ## Repository layout
 
@@ -10,10 +10,11 @@ Django REST API plus a Next.js dashboard, with an offline ML pipeline for synthe
 | `customer_prediction_system/predictor/generate_dataset1.py` | Deterministic synthetic CSV: 150 customers × 150 transactions (22,500 rows), single write to `predictor/data/dataset1.csv` |
 | `customer_prediction_system/predictor/data/dataset1.csv` | Feature-engineered transactions (regenerate with the script or `dataset.ipynb`) |
 | `customer_prediction_system/predictor/models/` | Trained artifacts: `timing_model.pkl`, `feature_list.pkl`, `bucket_boundaries.pkl` |
-| `customer_prediction_system/predictor/pipeline.py` | Inference, cycle-aware windows, multi-vendor run, OpenAI messaging |
+| `customer_prediction_system/predictor/pipeline.py` | Inference, cycle-aware windows, mock offer matching (`services.offer_fetcher`), multi-vendor run, OpenAI messaging |
 | `customer_prediction_system/dataset.ipynb` | Alternative path to build / engineer data and export CSV |
 | `customer_prediction_system/notebooks/model_training.ipynb` | Train timing classifier and save artifacts under `predictor/models/` |
-| `customer-recommendation-frontend/` | Next.js app: login (JWT), dashboard with personalized recommendations |
+| `services/` | Mock offer catalog (`mock_offers.json`) and `offer_fetcher.py`: load JSON, filter/rank offers, `match_best_offer`, `match_top_offers` |
+| `customer-recommendation-frontend/` | Next.js app: login (JWT), dashboard with primary deal + alternate offers when the API returns them |
 | `requirements.txt` | Python dependencies (Django, DRF, JWT, CORS, **PostgreSQL** via `psycopg`, **Faker** for dataset generation) |
 
 ## Prerequisites
@@ -129,6 +130,24 @@ Open **http://localhost:3002/login** (or whatever port you chose). Restart `npm 
 | Scoped | `GET /api/recommendations/me/` | Recommendations for the customer linked to the JWT user’s `UserProfile` |
 
 `UserProfile` ties a Django user to a `Customer`. When creating profiles in the shell, use **`UserProfile.get_or_create_for_user(user, customer)`** or `get_or_create(user=..., defaults={"customer": customer})` so `customer_id` is never null on insert.
+
+### Recommendations payload (offers)
+
+`GET /api/recommendations/me/` returns JSON built by `predictor.pipeline.get_recommendations_for_customer`. Each item includes:
+
+- **Primary deal (backward compatible):** `vendor`, `recommended_title`, `deal_price`, `offer_url`, `valid_until`, `offer_category`, `score`, `bucket`, `confidence`, `pattern`, nested `offer`, and `message`.
+- **`alternate_offers`:** up to **three** ranked mock offers (`vendor`, `price`, `category`, `title`, `url`, `valid_until`) when the transaction vendor maps to the mock catalog (e.g. Walmart, Amazon, major US airlines → `Airlines`). Vendors without catalog coverage still get synthetic pricing and an empty `alternate_offers` list.
+
+The Django app adds the repo root to `sys.path` so `from services.offer_fetcher import …` resolves next to this repository.
+
+### Mock offers (data + CLI)
+
+- Edit **`services/mock_offers.json`** to add or change deals (invalid JSON or a missing file yields an empty catalog at runtime).
+- Quick check from the repo root:
+
+  ```bash
+  python services/offer_fetcher.py
+  ```
 
 Root URL **`/`** returns a small JSON map of these endpoints.
 

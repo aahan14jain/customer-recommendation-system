@@ -1,10 +1,18 @@
 import os
+import sys
 from datetime import datetime
-
-import pandas as pd
-import joblib
 from pathlib import Path
+
+import joblib
+import pandas as pd
 from openai import OpenAI
+
+# Repo root contains top-level `services/` (e.g. offer_fetcher).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from services.offer_fetcher import match_best_offer, match_top_offers
 
 MODEL_DIR = Path(__file__).parent / "models"
 DATA_DIR = Path(__file__).parent / "data"
@@ -139,20 +147,61 @@ def detect_purchase_pattern(customer_id: str, vendor: str):
     }
 
 
-def select_offer(prediction: dict):
-    """
-    Simulate a vendor-appropriate deal near the customer's avg spend at that vendor.
-    Later replaced by real scraper output.
-    """
-    vendor = prediction["vendor"]
-    avg_spend = prediction["avg_spend"]
+def _catalog_vendor_for_offers(vendor: str) -> str | None:
+    """Map dataset vendor name to mock-offer catalog vendor, if any."""
+    if vendor in ("Walmart", "Amazon"):
+        return vendor
+    if vendor in ("American Airlines", "Delta Airlines", "United Airlines"):
+        return "Airlines"
+    return None
 
-    # Vendor-aware price simulation
+
+def _preferred_category_for_offers(vendor: str) -> str | None:
+    """
+    Soft category hint for match_top_offers (mock catalog uses groceries, electronics,
+    flights, home). None when we cannot map cleanly.
+    """
+    if vendor in ("American Airlines", "Delta Airlines", "United Airlines"):
+        return "flights"
+    if vendor == "Walmart":
+        return "groceries"
+    return None
+
+
+def _serialize_alternate_offer_row(offer: dict) -> dict:
+    """JSON-serializable alternate offer (matches mock offer_fetcher shape)."""
+    return {
+        "vendor": str(offer["vendor"]),
+        "price": float(offer["price"]),
+        "category": str(offer["category"]),
+        "title": str(offer["title"]),
+        "url": str(offer["url"]),
+        "valid_until": str(offer["valid_until"]),
+    }
+
+
+def _catalog_alternate_offers(
+    catalog_vendor: str,
+    avg_spend: float,
+    preferred_category: str | None,
+) -> list[dict]:
+    """Up to 3 ranked mock offers for the catalog vendor."""
+    rows = match_top_offers(
+        catalog_vendor,
+        float(avg_spend),
+        preferred_category=preferred_category,
+        limit=3,
+    )
+    return [_serialize_alternate_offer_row(o) for o in rows]
+
+
+def _synthetic_deal_price(vendor: str, avg_spend: float) -> float:
+    """Legacy simulated deal price when no mock offer exists for this vendor."""
     if vendor in ["American Airlines", "Delta Airlines", "United Airlines"]:
-        deal_price = round(avg_spend * 0.88, 2)  # flights: 12% off
-    elif vendor in ["Walmart", "Amazon", "Costco"]:
-        deal_price = round(avg_spend * 0.90, 2)  # retail: 10% off
-    elif vendor in [
+        return round(avg_spend * 0.88, 2)
+    if vendor in ["Walmart", "Amazon", "Costco"]:
+        return round(avg_spend * 0.90, 2)
+    if vendor in [
         "Starbucks",
         "Chipotle",
         "Subway",
@@ -160,24 +209,72 @@ def select_offer(prediction: dict):
         "Panera Bread",
         "Macdonalds",
     ]:
-        deal_price = round(avg_spend * 0.80, 2)  # food: 20% off (promo)
-    else:
-        deal_price = round(avg_spend * 0.85, 2)
+        return round(avg_spend * 0.80, 2)
+    return round(avg_spend * 0.85, 2)
+
+
+def select_offer(prediction: dict):
+    """
+    Pick a deal: matched mock offer from services.offer_fetcher when available,
+    otherwise synthetic pricing (legacy behavior).
+    """
+    vendor = prediction["vendor"]
+    avg_spend = float(prediction["avg_spend"])
+    window_start = prediction["window_start"]
+    window_end = prediction["window_end"]
 
     context = VENDOR_PRICE_CONTEXT.get(
         vendor,
         {"category": "purchase", "unit": "visit", "action": "shop"},
     )
 
+    catalog_vendor = _catalog_vendor_for_offers(vendor)
+    best = (
+        match_best_offer(catalog_vendor, avg_spend) if catalog_vendor else None
+    )
+    preferred = _preferred_category_for_offers(vendor)
+    alternate_offers = (
+        _catalog_alternate_offers(catalog_vendor, avg_spend, preferred)
+        if catalog_vendor
+        else []
+    )
+
+    predicted_spend = round(avg_spend, 2)
+    if best is not None:
+        deal_price = round(float(best["price"]), 2)
+        return {
+            "vendor": vendor,
+            "deal_price": deal_price,
+            "avg_spend": predicted_spend,
+            "predicted_spend": predicted_spend,
+            "window_start": window_start,
+            "window_end": window_end,
+            "category": str(best["category"]),
+            "unit": context["unit"],
+            "action": context["action"],
+            "recommended_title": str(best["title"]),
+            "offer_url": str(best["url"]),
+            "valid_until": str(best["valid_until"]),
+            "offer_category": str(best["category"]),
+            "alternate_offers": alternate_offers,
+        }
+
+    deal_price = _synthetic_deal_price(vendor, avg_spend)
     return {
         "vendor": vendor,
         "deal_price": deal_price,
-        "avg_spend": avg_spend,
-        "window_start": prediction["window_start"],
-        "window_end": prediction["window_end"],
+        "avg_spend": predicted_spend,
+        "predicted_spend": predicted_spend,
+        "window_start": window_start,
+        "window_end": window_end,
         "category": context["category"],
         "unit": context["unit"],
         "action": context["action"],
+        "recommended_title": "No live offer available right now",
+        "offer_url": None,
+        "valid_until": None,
+        "offer_category": None,
+        "alternate_offers": [],
     }
 
 
@@ -241,7 +338,10 @@ def run_pipeline(customer_id: str, vendor: str):
     print(f"Prediction: {prediction['bucket']} (confidence: {prediction['confidence']})")
     print(f"Scrape window: {prediction['window_start']} → {prediction['window_end']}")
     offer = select_offer(prediction)
-    print(f"Offer: ${offer['deal_price']} at {offer['vendor']}")
+    print(
+        f"Offer: {offer['recommended_title']} | ${offer['deal_price']} at {offer['vendor']} "
+        f"(url={offer['offer_url']!r}, valid_until={offer['valid_until']!r})"
+    )
     message = generate_message(prediction, offer)
     print(f"\nGenerated message:\n{message}")
     return message
@@ -272,7 +372,7 @@ def _compute_ranked_recommendations(customer_id: str):
         urgency = max(0, 100 - days_until)
         score = round((urgency / 100) * confidence, 3)
 
-        offer = select_offer(
+        offer_snapshot = select_offer(
             {
                 "vendor": vendor,
                 "avg_spend": pattern["avg_spend"],
@@ -286,7 +386,8 @@ def _compute_ranked_recommendations(customer_id: str):
                 **pattern,
                 "bucket": bucket,
                 "confidence": confidence,
-                "offer_price": offer["deal_price"],
+                "offer_price": offer_snapshot["deal_price"],
+                "offer_snapshot": offer_snapshot,
                 "score": score,
             }
         )
@@ -302,22 +403,22 @@ def get_recommendations_for_customer(customer_id: str, top_n: int = 5):
     results = _compute_ranked_recommendations(customer_id)
     out = []
     for r in results[:top_n]:
-        ctx = VENDOR_PRICE_CONTEXT.get(r["vendor"], {})
+        snap = r["offer_snapshot"]
         offer = {
-            "vendor": r["vendor"],
-            "deal_price": r["offer_price"],
-            "window_start": r["window_start"],
-            "window_end": r["window_end"],
-            "category": ctx.get("category", "purchase"),
-            "unit": ctx.get("unit", "visit"),
-            "action": ctx.get("action", "shop"),
-            "avg_spend": r["avg_spend"],
+            **snap,
             "predicted_date": r["predicted_date"],
         }
         message = generate_message(r, offer)
         out.append(
             {
                 "vendor": r["vendor"],
+                "predicted_spend": float(snap["predicted_spend"]),
+                "recommended_title": snap["recommended_title"],
+                "deal_price": float(snap["deal_price"]),
+                "offer_url": snap["offer_url"],
+                "valid_until": snap["valid_until"],
+                "offer_category": snap["offer_category"],
+                "alternate_offers": snap.get("alternate_offers", []),
                 "score": r["score"],
                 "bucket": r["bucket"],
                 "confidence": r["confidence"],
@@ -330,13 +431,17 @@ def get_recommendations_for_customer(customer_id: str, top_n: int = 5):
                     "avg_spend": r["avg_spend"],
                 },
                 "offer": {
-                    "deal_price": float(offer["deal_price"]),
-                    "avg_spend": float(offer["avg_spend"]),
-                    "category": offer["category"],
-                    "unit": offer["unit"],
-                    "action": offer["action"],
-                    "window_start": offer["window_start"],
-                    "window_end": offer["window_end"],
+                    "deal_price": float(snap["deal_price"]),
+                    "avg_spend": float(snap["avg_spend"]),
+                    "category": snap["category"],
+                    "unit": snap["unit"],
+                    "action": snap["action"],
+                    "window_start": snap["window_start"],
+                    "window_end": snap["window_end"],
+                    "recommended_title": snap["recommended_title"],
+                    "offer_url": snap["offer_url"],
+                    "valid_until": snap["valid_until"],
+                    "offer_category": snap["offer_category"],
                 },
                 "message": message,
             }
@@ -373,31 +478,47 @@ def run_for_all_vendors(customer_id: str, top_n: int = 5):
     print(f"\nGenerating messages for top {top_n} recommendations...")
     print("=" * 60)
     for r in results[:top_n]:
-        ctx = VENDOR_PRICE_CONTEXT.get(r["vendor"], {})
-        offer = {
-            "vendor": r["vendor"],
-            "deal_price": r["offer_price"],
-            "window_start": r["window_start"],
-            "window_end": r["window_end"],
-            "category": ctx.get("category", "purchase"),
-            "unit": ctx.get("unit", "visit"),
-            "action": ctx.get("action", "shop"),
-            "avg_spend": r["avg_spend"],
-            "predicted_date": r["predicted_date"],
-        }
+        snap = r["offer_snapshot"]
+        offer = {**snap, "predicted_date": r["predicted_date"]}
         message = generate_message(r, offer)
         print(
             f"\n{r['vendor']} | cycle: every {r['avg_gap_days']} days | next: {r['predicted_date']}"
         )
+        print(
+            f"  title: {snap['recommended_title']} | ${snap['deal_price']} | "
+            f"url={snap['offer_url']!r} | until={snap['valid_until']!r}"
+        )
+        ao = snap.get("alternate_offers") or []
+        if ao:
+            print(
+                f"  alternate_offers ({len(ao)}): "
+                f"{[a.get('title', '') for a in ao]}"
+            )
         print(f"  {message}")
 
     return results
 
 
 if __name__ == "__main__":
-    # Single vendor demo
+    # Single vendor demo (airline → mock "Airlines" catalog)
     sample = df[df["vendor"].isin(["American Airlines", "Delta Airlines", "United Airlines"])].iloc[0]
     run_pipeline(sample["customer_id"], sample["vendor"])
+
+    # Verify mock matcher: Walmart should surface a catalog title/URL, not only synthetic price
+    walmart_rows = df[df["vendor"] == "Walmart"]
+    if not walmart_rows.empty:
+        w = walmart_rows.iloc[0]
+        print("\n" + "=" * 60)
+        print("MOCK OFFER CHECK (Walmart)")
+        print("=" * 60)
+        demo_pred = predict_window(w["customer_id"], "Walmart")
+        if demo_pred:
+            w_offer = select_offer(demo_pred)
+            print(
+                f"predicted_spend={w_offer['predicted_spend']} → "
+                f"title={w_offer['recommended_title']!r} deal_price={w_offer['deal_price']} "
+                f"url={w_offer['offer_url']!r}"
+            )
 
     print("\n" + "=" * 60)
     print("ALL VENDORS FOR SAME CUSTOMER")
@@ -405,3 +526,22 @@ if __name__ == "__main__":
 
     # All vendors for same customer
     run_for_all_vendors(sample["customer_id"], top_n=3)
+
+    print("\n" + "=" * 60)
+    print("RECOMMENDATION JSON SAMPLE (first item fields + alternate_offers)")
+    print("=" * 60)
+    payload = get_recommendations_for_customer(sample["customer_id"], top_n=1)
+    if payload["recommendations"]:
+        rec0 = payload["recommendations"][0]
+        print(
+            {
+                "vendor": rec0["vendor"],
+                "predicted_spend": rec0["predicted_spend"],
+                "recommended_title": rec0["recommended_title"],
+                "deal_price": rec0["deal_price"],
+                "offer_url": rec0["offer_url"],
+                "valid_until": rec0["valid_until"],
+                "offer_category": rec0["offer_category"],
+                "alternate_offers": rec0.get("alternate_offers", []),
+            }
+        )

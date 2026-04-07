@@ -1,0 +1,98 @@
+[
+  {
+    "vendor": "Walmart",
+    "price": 50,
+    "category": "groceries",
+    "title": "Weekly Grocery Bundle",
+    "url": "https://example.com/deal1",
+    "valid_until": "2026-04-10"
+  },
+  {
+    "vendor": "Walmart",
+    "price": 32,
+    "category": "groceries",
+    "title": "Fresh Produce Box",
+    "url": "https://example.com/walmart/produce-box",
+    "valid_until": "2026-04-15"
+  },
+  {
+    "vendor": "Walmart",
+    "price": 299,
+    "category": "electronics",
+    "title": "4K Smart TV Weekend Price",
+    "url": "https://example.com/walmart/tv-4k",
+    "valid_until": "2026-04-12"
+  },
+  {
+    "vendor": "Walmart",
+    "price": 79,
+    "category": "electronics",
+    "title": "Wireless Noise-Canceling Headphones",
+    "url": "https://example.com/walmart/headphones",
+    "valid_until": "2026-04-20"
+  },
+  {
+    "vendor": "Amazon",
+    "price": 39,
+    "category": "electronics",
+    "title": "Smart Speaker Mini",
+    "url": "https://example.com/amazon/speaker-mini",
+    "valid_until": "2026-04-11"
+  },
+  {
+    "vendor": "Amazon",
+    "price": 59,
+    "category": "electronics",
+    "title": "Tablet 10-inch Essentials",
+    "url": "https://example.com/amazon/tablet",
+    "valid_until": "2026-04-18"
+  },
+  {
+    "vendor": "Amazon",
+    "price": 199,
+    "category": "home",
+    "title": "Robot Vacuum Spring Sale",
+    "url": "https://example.com/amazon/vacuum",
+    "valid_until": "2026-04-14"
+  },
+  {
+    "vendor": "Amazon",
+    "price": 89,
+    "category": "home",
+    "title": "Bedding & Bath Bundle",
+    "url": "https://example.com/amazon/bedding",
+    "valid_until": "2026-04-22"
+  },
+  {
+    "vendor": "Airlines",
+    "price": 299,
+    "category": "flights",
+    "title": "NYC–LAX Round Trip Saver",
+    "url": "https://example.com/airlines/nyc-lax",
+    "valid_until": "2026-04-09"
+  },
+  {
+    "vendor": "Airlines",
+    "price": 149,
+    "category": "flights",
+    "title": "Domestic Weekend Getaway",
+    "url": "https://example.com/airlines/weekend",
+    "valid_until": "2026-04-16"
+  },
+  {
+    "vendor": "Airlines",
+    "price": 599,
+    "category": "flights",
+    "title": "Europe Spring Fare Sale",
+    "url": "https://example.com/airlines/europe",
+    "valid_until": "2026-04-13"
+  },
+  {
+    "vendor": "Airlines",
+    "price": 219,
+    "category": "flights",
+    "title": "Last-Minute City Break",
+    "url": "https://example.com/airlines/last-minute",
+    "valid_until": "2026-04-08"
+  }
+]

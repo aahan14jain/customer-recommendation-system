@@ -15,11 +15,29 @@ type Customer = {
   last_name: string;
 };
 
+/** Secondary ranked offers from the API (optional). */
+type AlternateOfferItem = {
+  vendor?: string;
+  price?: number;
+  category?: string;
+  title?: string;
+  url?: string | null;
+  valid_until?: string | null;
+};
+
 type RecommendationItem = {
   vendor: string;
   score: number;
   bucket: string;
   confidence: number;
+  /** Main deal headline from the pipeline (may be missing on older API responses). */
+  recommended_title?: string | null;
+  /** Top-level deal price from API; falls back to `offer.deal_price`. */
+  deal_price?: number;
+  offer_url?: string | null;
+  valid_until?: string | null;
+  offer_category?: string | null;
+  alternate_offers?: AlternateOfferItem[];
   pattern: {
     predicted_date: string;
     avg_gap_days?: number;
@@ -36,6 +54,10 @@ type RecommendationItem = {
     action?: string;
     window_start?: string;
     window_end?: string;
+    recommended_title?: string | null;
+    offer_url?: string | null;
+    valid_until?: string | null;
+    offer_category?: string | null;
   };
   message: string;
 };
@@ -100,11 +122,39 @@ function bucketBadgeClass(bucket: string): string {
 }
 
 function computeSavings(rec: RecommendationItem): number | null {
-  const deal = rec.offer?.deal_price;
+  const deal =
+    typeof rec.deal_price === "number"
+      ? rec.deal_price
+      : rec.offer?.deal_price;
   const avg = rec.offer?.avg_spend ?? rec.pattern?.avg_spend;
   if (typeof deal !== "number" || typeof avg !== "number") return null;
   const s = avg - deal;
   return Number.isFinite(s) ? s : null;
+}
+
+function resolveDealFields(rec: RecommendationItem) {
+  const title =
+    rec.recommended_title?.trim() ||
+    rec.offer?.recommended_title?.trim() ||
+    "";
+  const dealPrice =
+    typeof rec.deal_price === "number"
+      ? rec.deal_price
+      : rec.offer?.deal_price;
+  const url = (rec.offer_url ?? rec.offer?.offer_url)?.trim() || "";
+  const validUntil = (rec.valid_until ?? rec.offer?.valid_until)?.trim() || "";
+  const category =
+    rec.offer_category?.trim() || rec.offer?.offer_category?.trim() || "";
+  return { title, dealPrice, url, validUntil, category };
+}
+
+/** Up to 3 alternate offers for display; empty if missing or invalid. */
+function alternateOffersToShow(
+  rec: RecommendationItem,
+): AlternateOfferItem[] {
+  const raw = rec.alternate_offers;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw.slice(0, 3);
 }
 
 /** Primary headline: "Hi, {first_name}" or fallback (uses existing `customer` state). */
@@ -324,6 +374,9 @@ export default function DashboardPage() {
               {recommendations.map((rec, index) => {
                 const savings = computeSavings(rec);
                 const emoji = vendorEmoji(rec.vendor);
+                const { title, dealPrice, url, validUntil, category } =
+                  resolveDealFields(rec);
+                const alternates = alternateOffersToShow(rec);
                 return (
                   <li
                     key={`${rec.vendor}-${index}`}
@@ -342,6 +395,16 @@ export default function DashboardPage() {
                         {formatBucket(rec.bucket)}
                       </span>
                     </div>
+                    {title ? (
+                      <p className="mt-3 text-xl font-semibold leading-snug text-zinc-900 dark:text-zinc-50">
+                        {title}
+                      </p>
+                    ) : null}
+                    {category ? (
+                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                        {category}
+                      </p>
+                    ) : null}
                     <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                       <div>
                         <dt className="text-zinc-500 dark:text-zinc-400">
@@ -366,19 +429,29 @@ export default function DashboardPage() {
                           Deal price
                         </dt>
                         <dd className="mt-0.5 text-zinc-900 dark:text-zinc-100">
-                          {typeof rec.offer?.deal_price === "number" ? (
-                            <span className="text-lg font-bold tabular-nums">
-                              ${rec.offer.deal_price.toFixed(2)}
+                          {typeof dealPrice === "number" ? (
+                            <span className="text-2xl font-bold tabular-nums tracking-tight">
+                              ${dealPrice.toFixed(2)}
                             </span>
                           ) : (
                             "—"
                           )}
                           {typeof rec.offer?.avg_spend === "number" ? (
-                            <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+                            <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
                               (typical ~${rec.offer.avg_spend.toFixed(2)})
                             </span>
                           ) : null}
                         </dd>
+                        {validUntil ? (
+                          <dd className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              Valid until:{" "}
+                            </span>
+                            <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                              {validUntil}
+                            </span>
+                          </dd>
+                        ) : null}
                         {savings !== null && savings > 0 ? (
                           <dd className="mt-1 text-sm font-medium text-emerald-700 dark:text-emerald-400">
                             Save ${savings.toFixed(2)} vs typical spend
@@ -386,6 +459,93 @@ export default function DashboardPage() {
                         ) : null}
                       </div>
                     </dl>
+                    {url ? (
+                      <div className="mt-4">
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                        >
+                          View Deal
+                        </a>
+                      </div>
+                    ) : null}
+                    {alternates.length > 0 ? (
+                      <div className="mt-4 rounded-lg border border-zinc-100 bg-zinc-50/90 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                          Alternate offers
+                        </p>
+                        <ul className="mt-2 space-y-2">
+                          {alternates.map((alt, altIndex) => {
+                            const altTitle =
+                              typeof alt.title === "string" &&
+                              alt.title.trim()
+                                ? alt.title.trim()
+                                : "Offer";
+                            const altPrice =
+                              typeof alt.price === "number" &&
+                              Number.isFinite(alt.price)
+                                ? alt.price
+                                : null;
+                            const altCat =
+                              typeof alt.category === "string" &&
+                              alt.category.trim()
+                                ? alt.category.trim()
+                                : "";
+                            const altUntil =
+                              typeof alt.valid_until === "string" &&
+                              alt.valid_until.trim()
+                                ? alt.valid_until.trim()
+                                : "";
+                            const altUrl =
+                              typeof alt.url === "string" &&
+                              alt.url.trim().length > 0
+                                ? alt.url.trim()
+                                : "";
+                            return (
+                              <li
+                                key={`alt-${index}-${altIndex}`}
+                                className="rounded-md border border-zinc-100/80 bg-white/80 px-2.5 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950/60"
+                              >
+                                <p className="font-medium leading-snug text-zinc-800 dark:text-zinc-100">
+                                  {altTitle}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-zinc-600 dark:text-zinc-400">
+                                  {altPrice !== null ? (
+                                    <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                                      ${altPrice.toFixed(2)}
+                                    </span>
+                                  ) : null}
+                                  {altCat ? (
+                                    <span className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+                                      {altCat}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {altUntil ? (
+                                  <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-500">
+                                    Valid until {altUntil}
+                                  </p>
+                                ) : null}
+                                {altUrl ? (
+                                  <div className="mt-1.5">
+                                    <a
+                                      href={altUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[11px] font-semibold text-zinc-700 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-300 dark:hover:text-zinc-100"
+                                    >
+                                      View Deal
+                                    </a>
+                                  </div>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : null}
                     <p className="mt-4 border-t border-zinc-100 pt-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
                       {rec.message}
                     </p>
