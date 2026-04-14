@@ -82,20 +82,22 @@ Then reload with `load_data` if you want the DB to match the new file.
 To create a Django `User` + `UserProfile` linked to each `Customer` (for JWT login and `/api/recommendations/me/`):
 
 ```bash
-export DEFAULT_CUSTOMER_PASSWORD='YourSecurePassword'
+export DEFAULT_CUSTOMER_PASSWORD='1234'
 python manage.py sync_customer_accounts
 ```
 
 Or pass the password once (same effect):
 
 ```bash
-python manage.py sync_customer_accounts --password 'YourSecurePassword'
+python manage.py sync_customer_accounts --password '1234'
 ```
 
-**Usernames and passwords**
+**Usernames and passwords (demo defaults)**
 
-- **Password:** Whatever you set with `DEFAULT_CUSTOMER_PASSWORD` or `--password` (stored hashed; not committed to git). Use a strong value in real environments.
-- **Username:** Not fixed in advance. The command prints each account as it runs, e.g. `[created] username=janesmith	customer_id=…`. Usernames are derived from the customer’s first and last name (lowercase, digits appended if needed for uniqueness). Use one of those printed usernames with the password you chose to log in at `/login`.
+- **Password:** Use **`1234`** with the commands above (or any value you prefer via `--password`). Passwords are stored hashed in the database.
+- **Username:** Each login username matches the customer’s **`first_name`** and **`last_name`** from `predictor/data/dataset1.csv`: lowercase letters only, concatenated with no space—e.g. first row **Whitney** + **Hicks** → **`whitneyhicks`**. If two customers would collide, `sync_customer_accounts` appends `2`, `3`, … (see command output lines like `[created] username=…`).
+
+Example demo login: **`whitneyhicks`** / **`1234`** (after `load_data` + `sync_customer_accounts`). Do not use **`1234`** in production.
 
 You must run **`load_data`** (or otherwise have `Customer` rows) **before** `sync_customer_accounts`, or there will be no customer-linked users to create.
 
@@ -133,10 +135,10 @@ The frontend image is built with **`NEXT_PUBLIC_API_URL=http://localhost:8001`**
 ```bash
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py load_data --file predictor/data/dataset1.csv
-docker compose exec backend python manage.py sync_customer_accounts --password 'YourSecurePassword'
+docker compose exec backend python manage.py sync_customer_accounts --password '1234'
 ```
 
-Log in at **http://localhost:3003/login** using a **username** printed by `sync_customer_accounts` and the **password** you passed to `--password`.
+Log in at **http://localhost:3003/login** with **`whitneyhicks`** / **`1234`** (first customer in `dataset1.csv`: Whitney Hicks), or another username from the `sync_customer_accounts` output.
 
 Individual images can also be built with `docker build` using the `Dockerfile` files at the repo root and under `customer-recommendation-frontend/`; Compose is the intended way to run everything together.
 
