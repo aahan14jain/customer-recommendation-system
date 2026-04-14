@@ -16,6 +16,9 @@ Django REST API plus a Next.js dashboard, with an offline ML pipeline for synthe
 | `services/` | Mock offer catalog (`mock_offers.json`) and `offer_fetcher.py`: load JSON, filter/rank offers, `match_best_offer`, `match_top_offers` |
 | `customer-recommendation-frontend/` | Next.js app: login (JWT), dashboard with primary deal + alternate offers when the API returns them |
 | `requirements.txt` | Python dependencies (Django, DRF, JWT, CORS, **PostgreSQL** via `psycopg`, **Faker** for dataset generation) |
+| `Dockerfile` (repo root) | Django backend image: `runserver` on **8001** inside the container |
+| `docker-compose.yml` | **postgres** + **backend** + **frontend** (one command full stack) |
+| `customer-recommendation-frontend/Dockerfile` | Next.js production image: app listens on **3001** inside the container |
 
 ## Prerequisites
 
@@ -83,6 +86,19 @@ export DEFAULT_CUSTOMER_PASSWORD='YourSecurePassword'
 python manage.py sync_customer_accounts
 ```
 
+Or pass the password once (same effect):
+
+```bash
+python manage.py sync_customer_accounts --password 'YourSecurePassword'
+```
+
+**Usernames and passwords**
+
+- **Password:** Whatever you set with `DEFAULT_CUSTOMER_PASSWORD` or `--password` (stored hashed; not committed to git). Use a strong value in real environments.
+- **Username:** Not fixed in advance. The command prints each account as it runs, e.g. `[created] username=janesmith	customer_id=…`. Usernames are derived from the customer’s first and last name (lowercase, digits appended if needed for uniqueness). Use one of those printed usernames with the password you chose to log in at `/login`.
+
+You must run **`load_data`** (or otherwise have `Customer` rows) **before** `sync_customer_accounts`, or there will be no customer-linked users to create.
+
 ### 5. Run the API
 
 ```bash
@@ -90,9 +106,39 @@ cd customer_prediction_system
 python manage.py runserver
 ```
 
-Default: **http://127.0.0.1:8000/**
+Default: **http://127.0.0.1:8000/** (local `runserver`; Docker maps the API on **8001**—see below).
 
 **Note:** Do not run `manage.py` from `customer-recommendation-frontend/` or from `~` without paths—use `cd customer_prediction_system` or pass the full path to `manage.py`.
+
+## Docker (full stack)
+
+From the **repository root** (where `docker-compose.yml` lives):
+
+```bash
+docker compose up --build
+```
+
+**Services and host ports**
+
+| Service | Host port | Notes |
+|---------|-----------|--------|
+| PostgreSQL | **5432** | DB `customer_prediction`, user/password `postgres` / `postgres` (as defined in `docker-compose.yml`) |
+| Backend (Django) | **8001** | `POSTGRES_HOST` is the `postgres` service name on the compose network |
+| Frontend (Next.js) | **3003** | Mapped to container port **3001**; UI at **http://localhost:3003** |
+
+The frontend image is built with **`NEXT_PUBLIC_API_URL=http://localhost:8001`** so the **browser** calls the API on the host (same machine as the dashboard).
+
+**First-time database setup** (after containers are up, migrations applied):
+
+```bash
+docker compose exec backend python manage.py migrate
+docker compose exec backend python manage.py load_data --file predictor/data/dataset1.csv
+docker compose exec backend python manage.py sync_customer_accounts --password 'YourSecurePassword'
+```
+
+Log in at **http://localhost:3003/login** using a **username** printed by `sync_customer_accounts` and the **password** you passed to `--password`.
+
+Individual images can also be built with `docker build` using the `Dockerfile` files at the repo root and under `customer-recommendation-frontend/`; Compose is the intended way to run everything together.
 
 ## Frontend (Next.js)
 
@@ -106,6 +152,8 @@ Create **`.env.local`** in that folder so the browser calls the Django API relia
 ```env
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
+
+If the API runs in Docker on port **8001**, use **`http://127.0.0.1:8001`** (or the URL from `docker compose` / `NEXT_PUBLIC_API_URL` in the frontend build).
 
 Start the dev server (use another port if **3000** is taken—e.g. by Grafana—or **3001** is in use):
 

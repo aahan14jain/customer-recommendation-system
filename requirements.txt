@@ -4,3 +4,7 @@ django-cors-headers>=4.3
 djangorestframework-simplejwt>=5.3
 psycopg[binary]>=3.2
 Faker>=24.0
+joblib>=1.4
+pandas>=2.0
+openai>=1.0
+scikit-learn>=1.3

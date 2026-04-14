@@ -14,7 +14,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--file',
             type=str,
-            default='predictor/data/dataset.csv',
+            default='predictor/data/dataset1.csv',
             help='Path to the CSV file to load'
         )
 
