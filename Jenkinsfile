@@ -66,9 +66,10 @@ pipeline {
             steps {
                 sh '''
                     set -e
-                    echo "Waiting for backend..."
+                    # Jenkins runs in Docker: localhost here is the Jenkins container, not the host where compose publishes ports.
+                    echo "Waiting for backend (http://host.docker.internal:8001/)..."
                     for i in $(seq 1 30); do
-                      if curl -fsS http://localhost:8001/ >/dev/null 2>&1; then
+                      if curl -fsS "http://host.docker.internal:8001/" >/dev/null 2>&1; then
                         echo "Backend OK"
                         break
                       fi
@@ -79,9 +80,9 @@ pipeline {
                       fi
                       sleep 2
                     done
-                    echo "Waiting for frontend..."
+                    echo "Waiting for frontend (http://host.docker.internal:3003/)..."
                     for i in $(seq 1 30); do
-                      if curl -fsS http://localhost:3003/ >/dev/null 2>&1; then
+                      if curl -fsS "http://host.docker.internal:3003/" >/dev/null 2>&1; then
                         echo "Frontend OK"
                         break
                       fi
