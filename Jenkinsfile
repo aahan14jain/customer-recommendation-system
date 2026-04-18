@@ -68,24 +68,26 @@ pipeline {
                     set -e
                     echo "Waiting for backend..."
                     for i in $(seq 1 30); do
-                      if docker compose exec -T backend sh -c "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8001/\")'" >/dev/null 2>&1; then
+                      if curl -fsS http://localhost:8001/ >/dev/null 2>&1; then
                         echo "Backend OK"
                         break
                       fi
                       if [ "$i" -eq 30 ]; then
                         echo "Backend health check failed"
+                        docker compose logs --tail 200 backend 2>&1 || true
                         exit 1
                       fi
                       sleep 2
                     done
                     echo "Waiting for frontend..."
                     for i in $(seq 1 30); do
-                      if docker compose exec -T frontend sh -c "node -e \"fetch('http://127.0.0.1:3001/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"" >/dev/null 2>&1; then
+                      if curl -fsS http://localhost:3003/ >/dev/null 2>&1; then
                         echo "Frontend OK"
                         break
                       fi
                       if [ "$i" -eq 30 ]; then
                         echo "Frontend health check failed"
+                        docker compose logs --tail 200 frontend 2>&1 || true
                         exit 1
                       fi
                       sleep 2
