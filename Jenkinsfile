@@ -4,6 +4,11 @@ pipeline {
     options {
         timestamps()
         skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        COMPOSE_PROJECT_NAME = 'customer-recommendation-ci'
     }
 
     stages {
