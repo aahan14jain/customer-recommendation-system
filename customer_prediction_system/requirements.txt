@@ -1,2 +1,0 @@
-# Delegate to repo root — keeps a single dependency list for local dev and Render.
--r ../requirements.txt
