@@ -7,6 +7,11 @@ import { ROUTES } from "@/lib/routes";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+function log(...args: unknown[]) {
+  if (process.env.NODE_ENV === "test") return;
+  console.log(...args);
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -20,7 +25,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      console.log(API_BASE);
+      log(API_BASE);
       const res = await fetch(`${API_BASE}/api/auth/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32,7 +37,7 @@ export default function LoginPage() {
         refresh?: string;
         detail?: string;
       };
-      console.log("Login response:", { status: res.status, body: data });
+      log("Login response:", { status: res.status, body: data });
 
       if (!res.ok || !data.access) {
         setError("Invalid credentials");
@@ -45,7 +50,7 @@ export default function LoginPage() {
       }
       router.push(ROUTES.dashboard);
     } catch (err) {
-      console.log("Login request failed:", err);
+      log("Login request failed:", err);
       setError("Invalid credentials");
     } finally {
       setLoading(false);
