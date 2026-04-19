@@ -10,30 +10,13 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-import getpass
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
-
-def _postgres_user() -> str:
-    """Default DB user: explicit POSTGRES_USER, else OS login (Homebrew Postgres on macOS), else postgres."""
-    explicit = os.environ.get("POSTGRES_USER")
-    if explicit:
-        return explicit
-    return (
-        os.environ.get("USER")
-        or os.environ.get("USERNAME")
-        or os.environ.get("LOGNAME")
-        or getpass.getuser()
-    )
-
-
-def _postgres_password() -> str:
-    """Empty password is common for local trust auth; set POSTGRES_PASSWORD for Docker/Linux."""
-    if "POSTGRES_PASSWORD" in os.environ:
-        return os.environ["POSTGRES_PASSWORD"]
-    return ""
+import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -50,10 +33,49 @@ SECRET_KEY = os.environ.get(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# Set DEBUG=false (or 0) on Render; omit or set true locally.
-DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
+# On Render, `RENDER` is set — DEBUG defaults to False. Locally it defaults to True unless DEBUG=false.
+def _env_bool(key: str, default: str = 'false') -> bool:
+    return os.environ.get(key, default).lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+
+DEBUG = _env_bool('DEBUG', 'false' if os.environ.get('RENDER') else 'true')
+
+
+def _split_csv(key: str) -> list[str]:
+    return [x.strip() for x in os.environ.get(key, '').split(',') if x.strip()]
+
+
+# Render sets RENDER_EXTERNAL_URL to your service URL (e.g. https://your-app.onrender.com).
+_render_external_url = os.environ.get('RENDER_EXTERNAL_URL', '').strip().rstrip('/')
+
+
+def _allowed_hosts() -> list[str]:
+    explicit = _split_csv('ALLOWED_HOSTS')
+    if explicit:
+        return explicit
+    hosts: list[str] = []
+    if _render_external_url:
+        host = urlparse(_render_external_url).hostname
+        if host:
+            hosts.append(host)
+    if DEBUG:
+        hosts.extend(['localhost', '127.0.0.1', 'host.docker.internal'])
+    if not hosts:
+        hosts = ['localhost', '127.0.0.1']
+    return list(dict.fromkeys(hosts))
+
+
+ALLOWED_HOSTS = _allowed_hosts()
+
+
+def _csrf_trusted_origins() -> list[str]:
+    origins = _split_csv('CSRF_TRUSTED_ORIGINS')
+    if _render_external_url and _render_external_url not in origins:
+        origins.append(_render_external_url)
+    return list(dict.fromkeys(origins))
+
+
+CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins()
 
 # Render (and similar) terminate TLS at the proxy; trust X-Forwarded-Proto when not in DEBUG.
 if not DEBUG:
@@ -113,33 +135,31 @@ WSGI_APPLICATION = 'customer_prediction_system.wsgi.application'
 
 # Database — PostgreSQL (auth User, sessions, JWT blacklist, predictor.*)
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-# Set POSTGRES_* via environment (see .env.example next to manage.py).
+# Set DATABASE_URL (e.g. postgres://user:pass@host:5432/dbname). See .env.example.
 
-if os.environ.get('DATABASE_URL'):
-    import dj_database_url
+_database_url = os.environ.get('DATABASE_URL')
+if not _database_url:
+    raise ImproperlyConfigured('DATABASE_URL is not set.')
 
-    DATABASES = {
-        'default': dj_database_url.config(
-            conn_max_age=int(os.environ.get('POSTGRES_CONN_MAX_AGE', '600')),
-            ssl_require=os.environ.get('DATABASE_SSL_REQUIRE', 'true').lower()
-            in ('1', 'true', 'yes'),
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('POSTGRES_DB', 'customer_prediction'),
-            'USER': _postgres_user(),
-            'PASSWORD': _postgres_password(),
-            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-            'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '60')),
-            'OPTIONS': {
-                'connect_timeout': int(os.environ.get('POSTGRES_CONNECT_TIMEOUT', '10')),
-            },
-        }
-    }
+if os.environ.get('RENDER') and (
+    'localhost' in _database_url
+    or '127.0.0.1' in _database_url
+    or '::1' in _database_url
+):
+    raise ImproperlyConfigured(
+        'DATABASE_URL must not use localhost or 127.0.0.1 on Render. '
+        'In the Render dashboard, link your PostgreSQL instance to this web service '
+        'or paste the Internal Database URL (hostname like dpg-*.render.com).'
+    )
+
+DATABASES = {
+    'default': dj_database_url.parse(
+        _database_url,
+        conn_max_age=int(os.environ.get('DATABASE_CONN_MAX_AGE', '600')),
+        ssl_require=os.environ.get('DATABASE_SSL_REQUIRE', 'true').lower()
+        in ('1', 'true', 'yes'),
+    ),
+}
 
 
 # Password validation
@@ -193,8 +213,15 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS - allow all origins in development
-CORS_ALLOW_ALL_ORIGINS = True
+# django-cors-headers — permissive in DEBUG; explicit origins in production.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    _cors_origins = _split_csv('CORS_ALLOWED_ORIGINS')
+    if _render_external_url and _render_external_url not in _cors_origins:
+        _cors_origins.append(_render_external_url)
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_cors_origins))
 
 # REST Framework
 REST_FRAMEWORK = {

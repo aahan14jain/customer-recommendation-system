@@ -16,7 +16,7 @@ Django REST API plus a Next.js dashboard, with an offline ML pipeline for synthe
 | `services/` | Mock offer catalog (`mock_offers.json`) and `offer_fetcher.py`: load JSON, filter/rank offers, `match_best_offer`, `match_top_offers` |
 | `customer-recommendation-frontend/` | Next.js app: login (JWT), dashboard with primary deal + alternate offers when the API returns them |
 | `requirements.txt` | Python dependencies (Django, DRF, JWT, CORS, **PostgreSQL** via `psycopg`, **Faker** for dataset generation) |
-| `Dockerfile` (repo root) | Django backend image: `runserver` on **8001** inside the container |
+| `Dockerfile` (repo root) | Django backend image: **Gunicorn** (`migrate` → `collectstatic` → `gunicorn … --bind 0.0.0.0:$PORT`; no `runserver`) |
 | `docker-compose.yml` | **postgres** + **backend** + **frontend** (one command full stack) |
 | `customer-recommendation-frontend/Dockerfile` | Next.js production image: app listens on **3001** inside the container |
 
@@ -108,7 +108,7 @@ cd customer_prediction_system
 python manage.py runserver
 ```
 
-Default: **http://127.0.0.1:8000/** (local `runserver`; Docker maps the API on **8001**—see below).
+Default: **http://127.0.0.1:8000/** when using local `runserver` above. **Docker Compose** uses the same `Dockerfile` **CMD**: **Gunicorn** on **`PORT`** (set to **8001** in `docker-compose.yml`, published as host **8001**).
 
 **Note:** Do not run `manage.py` from `customer-recommendation-frontend/` or from `~` without paths—use `cd customer_prediction_system` or pass the full path to `manage.py`.
 
@@ -125,7 +125,7 @@ docker compose up --build
 | Service | Host port | Notes |
 |---------|-----------|--------|
 | PostgreSQL | **5432** | DB `customer_prediction`, user/password `postgres` / `postgres` (as defined in `docker-compose.yml`) |
-| Backend (Django) | **8001** | `POSTGRES_HOST` is the `postgres` service name on the compose network |
+| Backend (Django) | **8001** | **`DATABASE_URL`** points at the `postgres` service; **`PORT=8001`** for Gunicorn |
 | Frontend (Next.js) | **3003** | Mapped to container port **3001**; UI at **http://localhost:3003** |
 
 The frontend image is built with **`NEXT_PUBLIC_API_URL=http://localhost:8001`** so the **browser** calls the API on the host (same machine as the dashboard).
