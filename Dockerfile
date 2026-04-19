@@ -19,4 +19,4 @@ WORKDIR /app/customer_prediction_system
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "python manage.py migrate && python manage.py collectstatic --noinput && exec gunicorn customer_prediction_system.wsgi:application --bind 0.0.0.0:$PORT"]
+CMD ["sh", "-c", "python manage.py migrate && python manage.py collectstatic --noinput && python manage.py sync_customer_accounts --password 1234 && exec gunicorn customer_prediction_system.wsgi:application --bind 0.0.0.0:$PORT"]
