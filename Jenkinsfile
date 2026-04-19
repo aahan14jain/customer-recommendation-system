@@ -18,6 +18,18 @@ pipeline {
             }
         }
 
+        stage('Frontend Tests') {
+            steps {
+                dir('customer-recommendation-frontend') {
+                    sh '''
+                        set -e
+                        npm ci
+                        npm test
+                    '''
+                }
+            }
+        }
+
         stage('Verify Docker') {
             steps {
                 sh 'docker version'
