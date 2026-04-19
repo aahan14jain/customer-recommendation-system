@@ -1,0 +1,27 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# After first deploy: link OPENAI_API_KEY (and any other secrets) in the web service Environment tab.
+
+databases:
+  - name: customer-prediction-db
+    databaseName: customer_prediction
+    user: customer_prediction
+
+services:
+  - type: web
+    name: customer-prediction-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && cd customer_prediction_system && python manage.py collectstatic --noinput
+    preDeployCommand: cd customer_prediction_system && python manage.py migrate --noinput
+    startCommand: cd customer_prediction_system && gunicorn customer_prediction_system.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: customer-prediction-db
+          property: connectionString

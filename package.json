@@ -1,0 +1,7 @@
+{
+  "name": "customer-prediction-system",
+  "private": true,
+  "scripts": {
+    "test": "npm run test --prefix customer-recommendation-frontend"
+  }
+}

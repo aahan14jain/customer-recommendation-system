@@ -16,6 +16,7 @@ ENV/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+customer_prediction_system/staticfiles/
 
 # macOS
 .DS_Store

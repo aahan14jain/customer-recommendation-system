@@ -43,12 +43,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&+($2z%g5+9c_qj)upwbp&v!@2ppd6rjb*ol92g_2*s$1+#hqx'
+# Set DJANGO_SECRET_KEY in production (e.g. Render dashboard).
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-&+($2z%g5+9c_qj)upwbp&v!@2ppd6rjb*ol92g_2*s$1+#hqx',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Set DEBUG=false (or 0) on Render; omit or set true locally.
+DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'host.docker.internal']
+ALLOWED_HOSTS = ['*']
+
+# Render (and similar) terminate TLS at the proxy; trust X-Forwarded-Proto when not in DEBUG.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # Application definition
@@ -69,6 +81,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -102,20 +115,31 @@ WSGI_APPLICATION = 'customer_prediction_system.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 # Set POSTGRES_* via environment (see .env.example next to manage.py).
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB', 'customer_prediction'),
-        'USER': _postgres_user(),
-        'PASSWORD': _postgres_password(),
-        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-        'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '60')),
-        'OPTIONS': {
-            'connect_timeout': int(os.environ.get('POSTGRES_CONNECT_TIMEOUT', '10')),
-        },
+if os.environ.get('DATABASE_URL'):
+    import dj_database_url
+
+    DATABASES = {
+        'default': dj_database_url.config(
+            conn_max_age=int(os.environ.get('POSTGRES_CONN_MAX_AGE', '600')),
+            ssl_require=os.environ.get('DATABASE_SSL_REQUIRE', 'true').lower()
+            in ('1', 'true', 'yes'),
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'customer_prediction'),
+            'USER': _postgres_user(),
+            'PASSWORD': _postgres_password(),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+            'CONN_MAX_AGE': int(os.environ.get('POSTGRES_CONN_MAX_AGE', '60')),
+            'OPTIONS': {
+                'connect_timeout': int(os.environ.get('POSTGRES_CONNECT_TIMEOUT', '10')),
+            },
+        }
+    }
 
 
 # Password validation
@@ -153,6 +177,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
