@@ -1,7 +1,7 @@
 import os
 import csv
 from datetime import datetime
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils.dateparse import parse_datetime, parse_date
 from django.utils import timezone
 from predictor.models import Customer, Transaction
@@ -32,8 +32,7 @@ class Command(BaseCommand):
             file_path = os.path.join(project_root, file_path)
         
         if not os.path.exists(file_path):
-            self.stdout.write(self.style.ERROR(f'File not found: {file_path}'))
-            return
+            raise CommandError(f'CSV file not found: {file_path}')
         
         self.stdout.write(self.style.SUCCESS(f'Loading data from: {file_path}'))
         

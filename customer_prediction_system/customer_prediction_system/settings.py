@@ -70,6 +70,9 @@ ALLOWED_HOSTS = _allowed_hosts()
 
 def _csrf_trusted_origins() -> list[str]:
     origins = _split_csv('CSRF_TRUSTED_ORIGINS')
+    for o in _split_csv('FRONTEND_ORIGINS'):
+        if o not in origins:
+            origins.append(o)
     if _render_external_url and _render_external_url not in origins:
         origins.append(_render_external_url)
     return list(dict.fromkeys(origins))
@@ -152,12 +155,19 @@ if os.environ.get('RENDER') and (
         'or paste the Internal Database URL (hostname like dpg-*.render.com).'
     )
 
+# Local Postgres usually has no TLS; Render managed DB needs SSL. Override with DATABASE_SSL_REQUIRE.
+_default_db_ssl = 'true' if os.environ.get('RENDER') else 'false'
+_ssl_require = os.environ.get('DATABASE_SSL_REQUIRE', _default_db_ssl).lower() in (
+    '1',
+    'true',
+    'yes',
+)
+
 DATABASES = {
     'default': dj_database_url.parse(
         _database_url,
         conn_max_age=int(os.environ.get('DATABASE_CONN_MAX_AGE', '600')),
-        ssl_require=os.environ.get('DATABASE_SSL_REQUIRE', 'true').lower()
-        in ('1', 'true', 'yes'),
+        ssl_require=_ssl_require,
     ),
 }
 
@@ -214,14 +224,19 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # django-cors-headers — permissive in DEBUG; explicit origins in production.
+# Set FRONTEND_ORIGINS or CORS_ALLOWED_ORIGINS on Render to your Vercel URL(s), comma-separated.
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     CORS_ALLOW_ALL_ORIGINS = False
-    _cors_origins = _split_csv('CORS_ALLOWED_ORIGINS')
+    _cors_origins = _split_csv('CORS_ALLOWED_ORIGINS') + _split_csv('FRONTEND_ORIGINS')
     if _render_external_url and _render_external_url not in _cors_origins:
         _cors_origins.append(_render_external_url)
     CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_cors_origins))
+    # Optional: allow any *.vercel.app preview deployment (set CORS_VERCEL_REGEX=true on Render).
+    CORS_ALLOWED_ORIGIN_REGEXES = []
+    if _env_bool('CORS_VERCEL_REGEX', 'false'):
+        CORS_ALLOWED_ORIGIN_REGEXES = [r'^https://[^\s/]+\.vercel\.app$']
 
 # REST Framework
 REST_FRAMEWORK = {
