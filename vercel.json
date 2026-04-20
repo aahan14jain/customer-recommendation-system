@@ -2,5 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd customer-recommendation-frontend && npm ci",
-  "buildCommand": "cd customer-recommendation-frontend && npm run build"
+  "buildCommand": "cd customer-recommendation-frontend && npm run build",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://customer-recommendation-system-9fhw.onrender.com"
+  }
 }
