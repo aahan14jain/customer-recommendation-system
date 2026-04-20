@@ -225,6 +225,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # django-cors-headers — permissive in DEBUG; explicit origins in production.
 # Set FRONTEND_ORIGINS or CORS_ALLOWED_ORIGINS on Render to your Vercel URL(s), comma-separated.
+_VERCEL_FRONTEND_ORIGIN = (
+    "https://customer-recommendation-system-842fg5exs-aahan14jains-projects.vercel.app"
+)
+
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
@@ -232,6 +236,8 @@ else:
     _cors_origins = _split_csv('CORS_ALLOWED_ORIGINS') + _split_csv('FRONTEND_ORIGINS')
     if _render_external_url and _render_external_url not in _cors_origins:
         _cors_origins.append(_render_external_url)
+    if _VERCEL_FRONTEND_ORIGIN not in _cors_origins:
+        _cors_origins.append(_VERCEL_FRONTEND_ORIGIN)
     CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_cors_origins))
     # Optional: allow any *.vercel.app preview deployment (set CORS_VERCEL_REGEX=true on Render).
     CORS_ALLOWED_ORIGIN_REGEXES = []
