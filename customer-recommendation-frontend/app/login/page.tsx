@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { ROUTES } from "@/lib/routes";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
 function log(...args: unknown[]) {
   if (process.env.NODE_ENV === "test") return;
   console.log(...args);
@@ -25,11 +23,16 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      log(API_BASE);
-      const res = await fetch(`${API_BASE}/api/auth/login/`, {
+      log(process.env.NEXT_PUBLIC_API_URL);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
       });
 
       const data = (await res.json()) as {
